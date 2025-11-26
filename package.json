@@ -1,0 +1,18 @@
+{
+  "name": "forger2",
+  "version": "1.0.0",
+  "description": "A Forger-style resource gathering and building game",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "phaser": "^3.70.0",
+    "peerjs": "^1.5.2"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  }
+}
