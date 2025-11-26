@@ -467,7 +467,7 @@ export class MineScene extends Phaser.Scene {
       vy *= 0.707;
     }
     
-    this.player.setVelocity(vx, vy);
+    this.player.body.setVelocity(vx, vy);
     
     // Update player light and label position
     this.playerLight.setPosition(this.player.x, this.player.y);
@@ -608,12 +608,13 @@ export class MineScene extends Phaser.Scene {
     
     // Knockback
     const angle = Phaser.Math.Angle.Between(this.player.x, this.player.y, enemy.x, enemy.y);
-    enemy.setVelocity(Math.cos(angle) * 200, Math.sin(angle) * 200);
+    enemy.body.setVelocity(Math.cos(angle) * 200, Math.sin(angle) * 200);
     
     // Flash red
-    enemy.setTint(0xff0000);
+    const originalColor = enemy.fillColor;
+    enemy.setFillStyle(0xff0000);
     this.time.delayedCall(100, () => {
-      if (enemy.active) enemy.clearTint();
+      if (enemy.active) enemy.setFillStyle(originalColor);
     });
     
     if (enemy.health <= 0) {
@@ -674,14 +675,14 @@ export class MineScene extends Phaser.Scene {
         
         // Move towards player
         const angle = Phaser.Math.Angle.Between(enemy.x, enemy.y, nearestPlayer.x, nearestPlayer.y);
-        enemy.setVelocity(Math.cos(angle) * enemy.speed, Math.sin(angle) * enemy.speed);
+        enemy.body.setVelocity(Math.cos(angle) * enemy.speed, Math.sin(angle) * enemy.speed);
       } else {
         enemy.isAggro = false;
         
         // Wander
         if (Math.random() < 0.02) {
           const wanderAngle = Math.random() * Math.PI * 2;
-          enemy.setVelocity(Math.cos(wanderAngle) * enemy.speed * 0.3, 
+          enemy.body.setVelocity(Math.cos(wanderAngle) * enemy.speed * 0.3, 
                            Math.sin(wanderAngle) * enemy.speed * 0.3);
         }
       }
@@ -700,12 +701,13 @@ export class MineScene extends Phaser.Scene {
     
     // Knockback player
     const angle = Phaser.Math.Angle.Between(enemy.x, enemy.y, player.x, player.y);
-    player.setVelocity(Math.cos(angle) * 300, Math.sin(angle) * 300);
+    player.body.setVelocity(Math.cos(angle) * 300, Math.sin(angle) * 300);
     
     // Flash
-    player.setTint(0xff0000);
+    const originalColor = player.fillColor;
+    player.setFillStyle(0xff0000);
     this.time.delayedCall(100, () => {
-      if (player.active) player.clearTint();
+      if (player.active) player.setFillStyle(originalColor);
     });
     
     this.showFloatingText(player.x, player.y, `-${enemy.damage}`);
