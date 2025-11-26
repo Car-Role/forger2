@@ -152,12 +152,13 @@ export class UIScene extends Phaser.Scene {
   updateInfoPanel() {
     const level = this.registry.get('level');
     const xp = this.registry.get('xp');
-    const xpNeeded = level * 100;
+    const { xpForLevel, totalXpForLevel } = this.getXpRequirements(level);
+    const xpIntoLevel = xp - totalXpForLevel;
     const unlockedLands = this.registry.get('unlockedLands') || {};
     const currentTool = this.registry.get('currentTool');
     
     this.infoLevelText.setText(`Level: ${level}`);
-    this.infoXpText.setText(`XP: ${xp} / ${xpNeeded}`);
+    this.infoXpText.setText(`XP: ${xpIntoLevel} / ${xpForLevel}`);
     this.landsText.setText(`Lands: ${Object.keys(unlockedLands).length}`);
     
     const toolName = currentTool === 'hands' ? 'Hands' : TOOLS[currentTool]?.name || 'Hands';
@@ -741,20 +742,20 @@ export class UIScene extends Phaser.Scene {
     const xp = this.registry.get('xp') || 0;
     const level = this.registry.get('level') || 1;
     
-    // XP required for next level - level 1 starts at 0 XP, level 2 at 100, etc.
-    const xpForNextLevel = level * 100; // Simple: 100 XP per level
-    const xpIntoLevel = xp % 100; // XP progress in current level
+    // Scaling XP curve
+    const { xpForLevel, totalXpForLevel } = this.getXpRequirements(level);
+    const xpIntoLevel = xp - totalXpForLevel;
     
     const healthPercent = health / 100;
     const energyPercent = energy / ENERGY.max;
-    const xpPercent = xpIntoLevel / 100;
+    const xpPercent = Math.min(xpIntoLevel / xpForLevel, 1);
     
     this.healthBarFill.setScale(healthPercent, 1);
     this.healthText.setText(`${Math.floor(health)}/100`);
     
     this.xpBarFill.setScale(xpPercent, 1);
     this.levelText.setText(`Lv${level}`);
-    this.xpText.setText(`${xpIntoLevel}/100`);
+    this.xpText.setText(`${xpIntoLevel}/${xpForLevel}`);
     
     this.energyBarFill.setScale(energyPercent, 1);
     this.energyText.setText(`${Math.floor(energy)}/${ENERGY.max}`);
@@ -766,17 +767,39 @@ export class UIScene extends Phaser.Scene {
     
     xp += amount;
     
-    // Check for level up (100 XP per level)
-    while (xp >= level * 100) {
+    // Check for level up with scaling XP curve
+    let { totalXpForLevel } = this.getXpRequirements(level);
+    let xpNeededForNextLevel = totalXpForLevel + this.getXpRequirements(level).xpForLevel;
+    
+    while (xp >= xpNeededForNextLevel) {
       level++;
       this.showNotification(`🎉 Level Up! Now level ${level}!`);
       
       // Restore health on level up
       this.registry.set('health', 100);
+      
+      // Recalculate for next level
+      const nextReqs = this.getXpRequirements(level);
+      xpNeededForNextLevel = nextReqs.totalXpForLevel + nextReqs.xpForLevel;
     }
     
     this.registry.set('xp', xp);
     this.registry.set('level', level);
+  }
+  
+  // Scaling XP curve: base 100, increases by 50% each level
+  getXpRequirements(level) {
+    const getXpForLevel = (lvl) => Math.floor(100 * Math.pow(1.5, lvl - 1));
+    
+    let totalXpForLevel = 0;
+    for (let i = 1; i < level; i++) {
+      totalXpForLevel += getXpForLevel(i);
+    }
+    
+    return {
+      xpForLevel: getXpForLevel(level),
+      totalXpForLevel: totalXpForLevel
+    };
   }
 
   createControlsHelp() {

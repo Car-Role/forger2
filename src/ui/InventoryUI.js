@@ -288,7 +288,26 @@ export class InventoryUI {
   }
 
   refreshInventoryGrid() {
-    const inventory = this.scene.registry.get('inventorySlots') || [];
+    // Get both old inventory (resources) and new slot-based inventory
+    const oldInventory = this.scene.registry.get('inventory') || {};
+    const inventorySlots = this.scene.registry.get('inventorySlots') || [];
+    
+    // Convert old inventory to slot format if inventorySlots is empty
+    let itemsToShow = [];
+    
+    // First add items from inventorySlots
+    inventorySlots.forEach(slotData => {
+      if (slotData && slotData.item) {
+        itemsToShow.push({ item: slotData.item, count: slotData.count || 1 });
+      }
+    });
+    
+    // Then add resources from old inventory that aren't already shown
+    Object.entries(oldInventory).forEach(([itemKey, count]) => {
+      if (count > 0 && !itemsToShow.find(i => i.item === itemKey)) {
+        itemsToShow.push({ item: itemKey, count: count });
+      }
+    });
     
     this.inventorySlots.forEach((slot, index) => {
       // Clear existing
@@ -301,20 +320,22 @@ export class InventoryUI {
         slot.itemText = null;
       }
       
-      const itemData = inventory[index];
+      const itemData = itemsToShow[index];
       if (itemData && itemData.item) {
         slot.item = itemData.item;
         slot.count = itemData.count || 1;
         
-        // Create icon
+        // Create icon - resources use their key directly as texture
         const iconKey = this.getItemIconKey(itemData.item);
         if (this.scene.textures.exists(iconKey)) {
           slot.itemIcon = this.scene.add.image(slot.bg.x, slot.bg.y, iconKey).setScale(1.5);
           this.container.add(slot.itemIcon);
         } else {
           // Fallback text icon
-          slot.itemIcon = this.scene.add.text(slot.bg.x, slot.bg.y, itemData.item.substring(0, 2).toUpperCase(), {
-            fontSize: '16px',
+          const resourceData = RESOURCES[itemData.item];
+          const displayText = resourceData ? resourceData.name.substring(0, 3) : itemData.item.substring(0, 2).toUpperCase();
+          slot.itemIcon = this.scene.add.text(slot.bg.x, slot.bg.y, displayText, {
+            fontSize: '14px',
             fontFamily: 'Arial',
             fontStyle: 'bold'
           }).setOrigin(0.5);
@@ -372,6 +393,8 @@ export class InventoryUI {
   }
 
   refreshHotbar() {
+    // Get tools from registry - this is the main source of owned tools
+    const tools = this.scene.registry.get('tools') || ['hands'];
     const hotbar = this.scene.registry.get('hotbar') || [];
     
     this.hotbarSlotObjects.forEach((slot, index) => {
@@ -384,25 +407,41 @@ export class InventoryUI {
         slot.itemText = null;
       }
       
-      const itemData = hotbar[index];
-      if (itemData && itemData.item) {
-        slot.item = itemData.item;
-        slot.count = itemData.count || 1;
+      // First check hotbar, then fall back to tools array
+      let itemKey = null;
+      let itemCount = 1;
+      
+      const hotbarItem = hotbar[index];
+      if (hotbarItem && hotbarItem.item) {
+        itemKey = hotbarItem.item;
+        itemCount = hotbarItem.count || 1;
+      } else if (index < tools.length) {
+        // Show tools in hotbar slots
+        itemKey = tools[index];
+      }
+      
+      if (itemKey && itemKey !== 'hands') {
+        slot.item = itemKey;
+        slot.count = itemCount;
         
-        const iconKey = this.getItemIconKey(itemData.item);
+        // Get the texture key - tools use their key directly
+        const iconKey = TOOLS[itemKey] ? itemKey : this.getItemIconKey(itemKey);
         if (this.scene.textures.exists(iconKey)) {
           slot.itemIcon = this.scene.add.image(slot.bg.x, slot.bg.y, iconKey).setScale(1.5);
         } else {
-          slot.itemIcon = this.scene.add.text(slot.bg.x, slot.bg.y, itemData.item.substring(0, 2).toUpperCase(), {
-            fontSize: '14px',
+          // Fallback: show tool name abbreviation
+          const toolData = TOOLS[itemKey];
+          const displayText = toolData ? toolData.name.substring(0, 3) : itemKey.substring(0, 2).toUpperCase();
+          slot.itemIcon = this.scene.add.text(slot.bg.x, slot.bg.y, displayText, {
+            fontSize: '12px',
             fontFamily: 'Arial',
             fontStyle: 'bold'
           }).setOrigin(0.5);
         }
         this.hotbarContainer.add(slot.itemIcon);
         
-        if (slot.count > 1) {
-          slot.itemText = this.scene.add.text(slot.bg.x + 18, slot.bg.y + 18, `${slot.count}`, {
+        if (itemCount > 1) {
+          slot.itemText = this.scene.add.text(slot.bg.x + 18, slot.bg.y + 18, `${itemCount}`, {
             fontSize: '11px',
             fontFamily: 'Arial',
             fontStyle: 'bold',
@@ -411,6 +450,14 @@ export class InventoryUI {
           }).setOrigin(1, 1);
           this.hotbarContainer.add(slot.itemText);
         }
+      } else if (index === 0) {
+        // First slot shows "Hands" if no tool
+        slot.item = 'hands';
+        slot.count = 1;
+        slot.itemIcon = this.scene.add.text(slot.bg.x, slot.bg.y, '✊', {
+          fontSize: '20px'
+        }).setOrigin(0.5);
+        this.hotbarContainer.add(slot.itemIcon);
       } else {
         slot.item = null;
         slot.count = 0;
@@ -518,11 +565,15 @@ export class InventoryUI {
     this.updateHotbarSelection();
     
     // Set current tool based on hotbar selection
+    const tools = this.scene.registry.get('tools') || ['hands'];
     const hotbar = this.scene.registry.get('hotbar') || [];
-    const selectedItem = hotbar[index];
     
-    if (selectedItem && selectedItem.item && TOOLS[selectedItem.item]) {
-      this.scene.registry.set('currentTool', selectedItem.item);
+    // Check hotbar first, then tools array
+    const hotbarItem = hotbar[index];
+    if (hotbarItem && hotbarItem.item && TOOLS[hotbarItem.item]) {
+      this.scene.registry.set('currentTool', hotbarItem.item);
+    } else if (index < tools.length && TOOLS[tools[index]]) {
+      this.scene.registry.set('currentTool', tools[index]);
     } else {
       this.scene.registry.set('currentTool', 'hands');
     }

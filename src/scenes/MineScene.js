@@ -55,6 +55,13 @@ export class MineScene extends Phaser.Scene {
     this.enemies = this.physics.add.group();
     this.remotePlayers = new Map();
     
+    // Set refresh time BEFORE generating mine (it uses this for seeding)
+    this.refreshTime = this.registry.get('mineRefreshTime');
+    if (!this.refreshTime || Date.now() > this.refreshTime) {
+      this.refreshTime = Date.now() + 300000; // 5 minutes from now
+      this.registry.set('mineRefreshTime', this.refreshTime);
+    }
+    
     // Create player
     this.createPlayer();
     
@@ -96,9 +103,15 @@ export class MineScene extends Phaser.Scene {
     this.miningTarget = null;
     this.miningProgress = 0;
     
+    // Create mining progress bar (same as overworld)
+    this.miningBarBg = this.add.rectangle(0, 0, 40, 6, 0x333333).setVisible(false).setDepth(300);
+    this.miningBarFill = this.add.rectangle(0, 0, 36, 4, 0x44ff44).setVisible(false).setDepth(301);
+    this.miningBarFill.setOrigin(0, 0.5);
+    
     // Attack cooldown
     this.lastAttackTime = 0;
-    this.attackCooldown = 400;
+    this.attackCooldownMax = 400;
+    this.attackCooldown = 0; // Current cooldown remaining (for animation)
     
     // Exit zone (top center)
     this.exitZone = this.add.rectangle(this.mineWidth / 2, 40, 100, 60, 0x44ff44, 0.3)
@@ -112,7 +125,6 @@ export class MineScene extends Phaser.Scene {
     }).setOrigin(0.5);
     
     // Refresh timer display
-    this.refreshTime = this.registry.get('mineRefreshTime') || Date.now() + 300000; // 5 minutes
     this.refreshText = this.add.text(this.mineWidth / 2, 80, '', {
       fontSize: '12px',
       fontFamily: 'Arial',
@@ -164,12 +176,16 @@ export class MineScene extends Phaser.Scene {
     const spawnX = this.mineWidth / 2 + (this.playerNumber - 1) * 40 - 40;
     const spawnY = 120;
     
-    // Create player as a visible rectangle (since we may not have sprite loaded)
-    this.player = this.add.rectangle(spawnX, spawnY, 24, 32, 0x44aaff);
-    this.player.setStrokeStyle(2, 0xffffff);
-    this.physics.add.existing(this.player);
-    this.player.body.setCollideWorldBounds(true);
+    // Use the same player sprite as overworld
+    this.player = this.physics.add.sprite(spawnX, spawnY, 'player');
+    this.player.setCollideWorldBounds(true);
     this.player.setDepth(100);
+    this.player.body.setSize(20, 24);
+    
+    // Animation state (same as GameScene)
+    this.walkFrame = 0;
+    this.walkTimer = 0;
+    this.currentPlayerTexture = 'player';
     
     // Player label
     this.playerLabel = this.add.text(spawnX, spawnY - 25, `P${this.playerNumber}`, {
@@ -177,10 +193,6 @@ export class MineScene extends Phaser.Scene {
       fontFamily: 'Arial',
       color: '#ffffff'
     }).setOrigin(0.5).setDepth(101);
-    
-    // Player light radius indicator
-    this.playerLight = this.add.circle(spawnX, spawnY, 120, 0xffff88, 0.15);
-    this.playerLight.setDepth(50);
   }
 
   generateMine() {
@@ -253,10 +265,22 @@ export class MineScene extends Phaser.Scene {
     const rockData = MINE_ROCKS[rockType];
     if (!rockData) return null;
     
-    const rock = this.add.rectangle(x, y, 40, 40, rockData.color);
-    rock.setStrokeStyle(3, 0xffffff);
+    // Map rock types to resource sprites
+    const spriteMap = {
+      stoneRock: 'stone',
+      coalRock: 'coal',
+      copperRock: 'copper',
+      ironRock: 'iron',
+      goldRock: 'gold',
+      crystalRock: 'crystal',
+      diamondRock: 'diamond',
+      mythrilRock: 'mythril'
+    };
+    
+    const spriteKey = spriteMap[rockType] || 'stone';
+    const rock = this.physics.add.sprite(x, y, spriteKey);
     rock.setDepth(10);
-    this.physics.add.existing(rock, true);
+    rock.setScale(1.5); // Make rocks bigger in mines
     
     rock.id = id;
     rock.rockType = rockType;
@@ -264,14 +288,6 @@ export class MineScene extends Phaser.Scene {
     rock.maxHealth = rockData.health;
     rock.drops = rockData.drops;
     rock.tier = rockData.tier;
-    
-    // Rock label
-    rock.label = this.add.text(x, y, rockData.name.charAt(0), {
-      fontSize: '14px',
-      fontFamily: 'Arial',
-      fontStyle: 'bold',
-      color: '#ffffff'
-    }).setOrigin(0.5).setDepth(11);
     
     // Add sparkle effect for rare rocks
     if (rockData.tier >= 4) {
@@ -295,12 +311,9 @@ export class MineScene extends Phaser.Scene {
     const enemyData = ENEMIES[enemyType];
     if (!enemyData) return null;
     
-    // Create enemy as visible shape
-    const enemyColor = enemyData.color || 0xff4444;
-    const enemy = this.add.rectangle(x, y, 28, 28, enemyColor);
-    enemy.setStrokeStyle(2, 0xff0000);
+    // Use the same enemy sprites as overworld
+    const enemy = this.physics.add.sprite(x, y, enemyType);
     enemy.setDepth(80);
-    this.physics.add.existing(enemy);
     
     enemy.id = id;
     enemy.enemyType = enemyType;
@@ -313,14 +326,6 @@ export class MineScene extends Phaser.Scene {
     enemy.attackCooldown = 800; // Attack faster
     enemy.aggroRange = 250; // Much larger aggro range - they can see in the dark!
     enemy.isAggro = false;
-    
-    // Enemy label
-    enemy.label = this.add.text(x, y, enemyType.charAt(0).toUpperCase(), {
-      fontSize: '12px',
-      fontFamily: 'Arial',
-      fontStyle: 'bold',
-      color: '#ffffff'
-    }).setOrigin(0.5).setDepth(81);
     
     // Health bar
     enemy.healthBarBg = this.add.rectangle(x, y - 20, 30, 5, 0x333333).setDepth(82);
@@ -342,50 +347,21 @@ export class MineScene extends Phaser.Scene {
   }
 
   createLighting() {
-    // Simple vignette effect - less aggressive darkness
-    this.darkness = this.add.graphics();
-    this.darkness.setDepth(200);
+    // Simple dark overlay - just 10% darker
+    this.darkness = this.add.rectangle(
+      this.mineWidth / 2, 
+      this.mineHeight / 2, 
+      this.mineWidth, 
+      this.mineHeight, 
+      0x000000, 
+      0.1  // 10% opacity
+    );
+    this.darkness.setDepth(5); // Below UI elements but above background
+    this.darkness.setScrollFactor(0);
   }
 
   updateLighting() {
-    this.darkness.clear();
-    
-    // Create a subtle darkness around edges, light in center around player
-    const px = this.player.x;
-    const py = this.player.y;
-    const camX = this.cameras.main.scrollX;
-    const camY = this.cameras.main.scrollY;
-    const camW = this.cameras.main.width;
-    const camH = this.cameras.main.height;
-    
-    // Draw darkness with hole for player light
-    this.darkness.fillStyle(0x000000, 0.6);
-    
-    // Fill the entire visible area
-    this.darkness.fillRect(camX - 100, camY - 100, camW + 200, camH + 200);
-    
-    // Cut out light circles using blend mode
-    this.darkness.setBlendMode(Phaser.BlendModes.ERASE);
-    
-    // Player light - gradient effect
-    for (let i = 0; i < 5; i++) {
-      const radius = 180 - i * 30;
-      const alpha = 0.3 + i * 0.15;
-      this.darkness.fillStyle(0xffffff, alpha);
-      this.darkness.fillCircle(px, py, radius);
-    }
-    
-    // Remote player lights
-    this.remotePlayers.forEach(player => {
-      for (let i = 0; i < 4; i++) {
-        const radius = 120 - i * 25;
-        const alpha = 0.25 + i * 0.15;
-        this.darkness.fillStyle(0xffffff, alpha);
-        this.darkness.fillCircle(player.x, player.y, radius);
-      }
-    });
-    
-    this.darkness.setBlendMode(Phaser.BlendModes.NORMAL);
+    // No dynamic lighting updates needed - just a static dark overlay
   }
 
   setupControls() {
@@ -452,6 +428,12 @@ export class MineScene extends Phaser.Scene {
   update(time, delta) {
     if (!this.player || !this.player.body) return;
     
+    // Decrement attack cooldown for animation
+    if (this.attackCooldown > 0) {
+      this.attackCooldown -= delta;
+      if (this.attackCooldown < 0) this.attackCooldown = 0;
+    }
+    
     // Movement
     const speed = 160;
     let vx = 0, vy = 0;
@@ -467,10 +449,12 @@ export class MineScene extends Phaser.Scene {
       vy *= 0.707;
     }
     
-    this.player.body.setVelocity(vx, vy);
+    this.player.setVelocity(vx, vy);
     
-    // Update player light and label position
-    this.playerLight.setPosition(this.player.x, this.player.y);
+    // Update player animation (same as GameScene)
+    this.updatePlayerAnimation(delta);
+    
+    // Update player label position
     if (this.playerLabel) {
       this.playerLabel.setPosition(this.player.x, this.player.y - 25);
     }
@@ -488,18 +472,12 @@ export class MineScene extends Phaser.Scene {
       this.tryAttack(time);
     }
     
-    // Update lighting
-    this.updateLighting();
-    
-    // Update enemy health bars and labels
+    // Update enemy health bars
     this.enemies.getChildren().forEach(enemy => {
       if (enemy.healthBarBg && enemy.healthBarFill) {
         enemy.healthBarBg.setPosition(enemy.x, enemy.y - 20);
         enemy.healthBarFill.setPosition(enemy.x, enemy.y - 20);
         enemy.healthBarFill.setScale(enemy.health / enemy.maxHealth, 1);
-      }
-      if (enemy.label) {
-        enemy.label.setPosition(enemy.x, enemy.y);
       }
     });
     
@@ -513,38 +491,95 @@ export class MineScene extends Phaser.Scene {
   }
 
   tryMine() {
-    // Find nearest rock in range
-    const mineRange = 50;
-    let nearestRock = null;
-    let nearestDist = mineRange;
+    const mineRange = 60;
     
-    this.rocks.getChildren().forEach(rock => {
-      const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, rock.x, rock.y);
-      if (dist < nearestDist) {
-        nearestDist = dist;
-        nearestRock = rock;
+    // If not currently mining, find nearest rock
+    if (!this.isMining) {
+      let nearestRock = null;
+      let nearestDist = mineRange;
+      
+      this.rocks.getChildren().forEach(rock => {
+        const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, rock.x, rock.y);
+        if (dist < nearestDist) {
+          nearestDist = dist;
+          nearestRock = rock;
+        }
+      });
+      
+      if (nearestRock) {
+        this.startMining(nearestRock);
       }
-    });
-    
-    if (nearestRock) {
-      if (this.miningTarget !== nearestRock) {
-        this.miningTarget = nearestRock;
-        this.miningProgress = 0;
-      }
-      
-      // Get tool power
-      const tool = TOOLS[this.currentTool] || TOOLS.hands;
-      const power = tool.power || 1;
-      
-      this.miningProgress += power * 0.02;
-      
-      // Visual feedback
-      nearestRock.setScale(1 + Math.sin(this.miningProgress * 10) * 0.05);
-      
-      if (this.miningProgress >= 1) {
-        this.harvestRock(nearestRock);
-      }
+      return;
     }
+    
+    // Check if still in range
+    const dist = Phaser.Math.Distance.Between(
+      this.player.x, this.player.y,
+      this.miningTarget.x, this.miningTarget.y
+    );
+    
+    if (dist > mineRange) {
+      this.stopMining();
+      return;
+    }
+    
+    // Get tool power and type bonus (same as overworld)
+    const currentTool = this.registry.get('currentTool') || 'hands';
+    const tool = TOOLS[currentTool] || TOOLS.hands;
+    let toolPower = tool.power || 1;
+    
+    // Pickaxe bonus for mining rocks
+    if (tool.type === 'pickaxe') {
+      toolPower *= 1.5;
+    }
+    
+    // Progress mining (harvestTime based on rock tier)
+    const harvestTime = 500 + (this.miningTarget.tier * 200); // Higher tier = longer
+    this.miningProgress += 16.67 * (toolPower / 2); // ~60fps delta
+    
+    // Update progress bar
+    const progress = Math.min(this.miningProgress / harvestTime, 1);
+    this.updateMiningBar(progress);
+    
+    if (this.miningProgress >= harvestTime) {
+      this.harvestRock(this.miningTarget);
+    }
+  }
+  
+  startMining(rock) {
+    this.isMining = true;
+    this.miningTarget = rock;
+    this.miningProgress = 0;
+    
+    // Show progress bar
+    this.miningBarBg.setVisible(true);
+    this.miningBarFill.setVisible(true);
+    
+    // Highlight rock
+    rock.setTint(0xffff88);
+  }
+  
+  stopMining() {
+    if (this.miningTarget) {
+      this.miningTarget.clearTint();
+      this.miningTarget.setScale(1.5); // Reset scale
+    }
+    
+    this.isMining = false;
+    this.miningTarget = null;
+    this.miningProgress = 0;
+    
+    this.miningBarBg.setVisible(false);
+    this.miningBarFill.setVisible(false);
+  }
+  
+  updateMiningBar(progress) {
+    const x = this.miningTarget.x;
+    const y = this.miningTarget.y - 35;
+    
+    this.miningBarBg.setPosition(x, y);
+    this.miningBarFill.setPosition(x - 18, y);
+    this.miningBarFill.setScale(progress, 1);
   }
 
   harvestRock(rock) {
@@ -572,17 +607,26 @@ export class MineScene extends Phaser.Scene {
       });
     }
     
+    // Reset mining state
+    this.isMining = false;
     this.miningTarget = null;
     this.miningProgress = 0;
+    this.miningBarBg.setVisible(false);
+    this.miningBarFill.setVisible(false);
   }
 
   tryAttack(time) {
-    if (time - this.lastAttackTime < this.attackCooldown) return;
+    if (time - this.lastAttackTime < this.attackCooldownMax) return;
     this.lastAttackTime = time;
+    this.attackCooldown = this.attackCooldownMax; // Set cooldown for animation
     
-    const tool = TOOLS[this.currentTool] || TOOLS.hands;
-    const range = tool.attack?.range || 30;
+    const currentTool = this.registry.get('currentTool') || 'hands';
+    const tool = TOOLS[currentTool] || TOOLS.hands;
+    const range = tool.attack?.range || 40;
     const damage = tool.power || 1;
+    
+    // Get attack direction
+    const attackDir = this.getAttackDirection();
     
     // Find enemies in range
     this.enemies.getChildren().forEach(enemy => {
@@ -592,14 +636,49 @@ export class MineScene extends Phaser.Scene {
       }
     });
     
-    // Attack visual
-    const attackCircle = this.add.circle(this.player.x, this.player.y, range, 0xffffff, 0.3);
+    // Show attack effect (same as overworld - no white circle)
+    this.showPunchEffect(this.player.x, this.player.y, attackDir);
+  }
+  
+  getAttackDirection() {
+    const vx = this.player.body.velocity.x;
+    const vy = this.player.body.velocity.y;
+    
+    if (Math.abs(vx) > 10 || Math.abs(vy) > 10) {
+      if (Math.abs(vx) > Math.abs(vy)) {
+        return { x: vx > 0 ? 1 : -1, y: 0 };
+      } else {
+        return { x: 0, y: vy > 0 ? 1 : -1 };
+      }
+    }
+    
+    return { x: this.player.flipX ? -1 : 1, y: 0 };
+  }
+  
+  showPunchEffect(px, py, attackDir) {
+    const { x: dirX, y: dirY } = attackDir;
+    
+    const graphics = this.add.graphics();
+    graphics.setDepth(2500);
+    
+    const impactX = px + dirX * 22;
+    const impactY = py + dirY * 22;
+    
+    // Impact lines only (same as overworld)
+    graphics.lineStyle(2, 0xffffaa, 0.7);
+    for (let i = 0; i < 3; i++) {
+      const angle = Math.atan2(dirY, dirX) + (i - 1) * 0.5;
+      graphics.beginPath();
+      graphics.moveTo(impactX + Math.cos(angle) * 6, impactY + Math.sin(angle) * 6);
+      graphics.lineTo(impactX + Math.cos(angle) * 12, impactY + Math.sin(angle) * 12);
+      graphics.strokePath();
+    }
+    
     this.tweens.add({
-      targets: attackCircle,
+      targets: graphics,
       alpha: 0,
-      scale: 1.5,
-      duration: 200,
-      onComplete: () => attackCircle.destroy()
+      duration: 80,
+      onComplete: () => graphics.destroy()
     });
   }
 
@@ -608,13 +687,12 @@ export class MineScene extends Phaser.Scene {
     
     // Knockback
     const angle = Phaser.Math.Angle.Between(this.player.x, this.player.y, enemy.x, enemy.y);
-    enemy.body.setVelocity(Math.cos(angle) * 200, Math.sin(angle) * 200);
+    enemy.setVelocity(Math.cos(angle) * 200, Math.sin(angle) * 200);
     
     // Flash red
-    const originalColor = enemy.fillColor;
-    enemy.setFillStyle(0xff0000);
+    enemy.setTint(0xff0000);
     this.time.delayedCall(100, () => {
-      if (enemy.active) enemy.setFillStyle(originalColor);
+      if (enemy.active) enemy.clearTint();
     });
     
     if (enemy.health <= 0) {
@@ -640,7 +718,6 @@ export class MineScene extends Phaser.Scene {
     // Cleanup
     if (enemy.healthBarBg) enemy.healthBarBg.destroy();
     if (enemy.healthBarFill) enemy.healthBarFill.destroy();
-    if (enemy.label) enemy.label.destroy();
     enemy.destroy();
     
     // Broadcast
@@ -675,14 +752,14 @@ export class MineScene extends Phaser.Scene {
         
         // Move towards player
         const angle = Phaser.Math.Angle.Between(enemy.x, enemy.y, nearestPlayer.x, nearestPlayer.y);
-        enemy.body.setVelocity(Math.cos(angle) * enemy.speed, Math.sin(angle) * enemy.speed);
+        enemy.setVelocity(Math.cos(angle) * enemy.speed, Math.sin(angle) * enemy.speed);
       } else {
         enemy.isAggro = false;
         
         // Wander
         if (Math.random() < 0.02) {
           const wanderAngle = Math.random() * Math.PI * 2;
-          enemy.body.setVelocity(Math.cos(wanderAngle) * enemy.speed * 0.3, 
+          enemy.setVelocity(Math.cos(wanderAngle) * enemy.speed * 0.3, 
                            Math.sin(wanderAngle) * enemy.speed * 0.3);
         }
       }
@@ -701,13 +778,12 @@ export class MineScene extends Phaser.Scene {
     
     // Knockback player
     const angle = Phaser.Math.Angle.Between(enemy.x, enemy.y, player.x, player.y);
-    player.body.setVelocity(Math.cos(angle) * 300, Math.sin(angle) * 300);
+    player.setVelocity(Math.cos(angle) * 300, Math.sin(angle) * 300);
     
     // Flash
-    const originalColor = player.fillColor;
-    player.setFillStyle(0xff0000);
+    player.setTint(0xff0000);
     this.time.delayedCall(100, () => {
-      if (player.active) player.setFillStyle(originalColor);
+      if (player.active) player.clearTint();
     });
     
     this.showFloatingText(player.x, player.y, `-${enemy.damage}`);
@@ -723,15 +799,8 @@ export class MineScene extends Phaser.Scene {
   }
 
   handleExitZone() {
-    // Show exit prompt
-    if (!this.exitPromptShown) {
-      this.exitPromptShown = true;
-      this.showFloatingText(this.player.x, this.player.y - 40, 'Press E to exit');
-    }
-    
-    if (Phaser.Input.Keyboard.JustDown(this.keys.interact)) {
-      this.exitMine();
-    }
+    // Exit immediately when touching exit zone
+    this.exitMine();
   }
 
   exitMine() {
@@ -769,9 +838,9 @@ export class MineScene extends Phaser.Scene {
     let remotePlayer = this.remotePlayers.get(peerId);
     
     if (!remotePlayer) {
-      // Create remote player as rectangle
-      remotePlayer = this.add.rectangle(data.x, data.y, 24, 32, 0x88ff88);
-      remotePlayer.setStrokeStyle(2, 0xffffff);
+      // Create remote player using same sprite as overworld
+      remotePlayer = this.add.sprite(data.x, data.y, 'player');
+      remotePlayer.setTint(0x88ff88); // Tint to differentiate
       remotePlayer.setDepth(99);
       remotePlayer.playerNumber = data.playerNumber;
       
@@ -818,7 +887,6 @@ export class MineScene extends Phaser.Scene {
     if (enemy) {
       if (enemy.healthBarBg) enemy.healthBarBg.destroy();
       if (enemy.healthBarFill) enemy.healthBarFill.destroy();
-      if (enemy.label) enemy.label.destroy();
       enemy.destroy();
     }
   }
@@ -892,5 +960,92 @@ export class MineScene extends Phaser.Scene {
       duration: 1500,
       onComplete: () => floatText.destroy()
     });
+  }
+
+  // Player animation system (same as GameScene)
+  updatePlayerAnimation(delta) {
+    let targetTexture = 'player';
+    
+    // Get current tool type from registry (always up to date)
+    const currentTool = this.registry.get('currentTool') || 'hands';
+    const toolData = TOOLS[currentTool];
+    const toolType = toolData?.type || 'hands';
+    
+    if (this.isMining) {
+      // Mining animation based on tool type
+      this.walkTimer += delta;
+      if (this.walkTimer > 200) {
+        this.walkTimer = 0;
+        this.walkFrame = (this.walkFrame + 1) % 2;
+      }
+      
+      if (toolType === 'pickaxe') {
+        targetTexture = this.walkFrame === 0 ? 'player_swing_pickaxe1' : 'player_swing_pickaxe2';
+      } else if (toolType === 'axe') {
+        targetTexture = this.walkFrame === 0 ? 'player_swing_axe1' : 'player_swing_axe2';
+      } else {
+        targetTexture = this.walkFrame === 0 ? 'player_mine' : 'player';
+      }
+    } else if (this.attackCooldown > 0) {
+      // Attack animation based on weapon type
+      const attackProgress = 1 - (this.attackCooldown / this.attackCooldownMax);
+      
+      if (toolType === 'sword') {
+        if (attackProgress < 0.2) {
+          targetTexture = 'player_swing_sword1';
+        } else if (attackProgress < 0.5) {
+          targetTexture = 'player_swing_sword2';
+        } else {
+          targetTexture = 'player_swing_sword3';
+        }
+      } else if (toolType === 'axe') {
+        targetTexture = attackProgress < 0.5 ? 'player_swing_axe1' : 'player_swing_axe2';
+      } else if (toolType === 'pickaxe') {
+        targetTexture = attackProgress < 0.5 ? 'player_swing_pickaxe1' : 'player_swing_pickaxe2';
+      } else {
+        targetTexture = 'player_attack';
+      }
+    } else if (this.player.body.velocity.length() > 10) {
+      // Walking animation
+      this.walkTimer += delta;
+      if (this.walkTimer > 150) {
+        this.walkTimer = 0;
+        this.walkFrame = (this.walkFrame + 1) % 3;
+      }
+      
+      if (this.walkFrame === 0) {
+        targetTexture = this.getHoldTexture(toolType);
+      } else if (this.walkFrame === 1) {
+        targetTexture = 'player_walk1';
+      } else {
+        targetTexture = 'player_walk2';
+      }
+    } else {
+      // Idle - show weapon held
+      targetTexture = this.getHoldTexture(toolType);
+      this.walkFrame = 0;
+      this.walkTimer = 0;
+    }
+    
+    if (this.currentPlayerTexture !== targetTexture) {
+      this.currentPlayerTexture = targetTexture;
+      this.player.setTexture(targetTexture);
+    }
+    
+    // Flip based on movement direction
+    if (this.player.body.velocity.x < -10) {
+      this.player.setFlipX(true);
+    } else if (this.player.body.velocity.x > 10) {
+      this.player.setFlipX(false);
+    }
+  }
+
+  getHoldTexture(toolType) {
+    switch (toolType) {
+      case 'sword': return 'player_hold_sword';
+      case 'axe': return 'player_hold_axe';
+      case 'pickaxe': return 'player_hold_pickaxe';
+      default: return 'player';
+    }
   }
 }

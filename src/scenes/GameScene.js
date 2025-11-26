@@ -2097,8 +2097,21 @@ export class GameScene extends Phaser.Scene {
     const xp = this.registry.get('xp');
     let level = this.registry.get('level');
     
-    // Simple: 100 XP per level
-    const xpNeededForNextLevel = level * 100;
+    // Scaling XP curve: base 100, increases by 50% each level
+    // Level 1->2: 100 XP, Level 2->3: 150 XP, Level 3->4: 225 XP, etc.
+    const getXpForLevel = (lvl) => Math.floor(100 * Math.pow(1.5, lvl - 1));
+    
+    // Calculate total XP needed to reach current level
+    const getTotalXpForLevel = (lvl) => {
+      let total = 0;
+      for (let i = 1; i < lvl; i++) {
+        total += getXpForLevel(i);
+      }
+      return total;
+    };
+    
+    const totalXpForCurrentLevel = getTotalXpForLevel(level);
+    const xpNeededForNextLevel = totalXpForCurrentLevel + getXpForLevel(level);
     
     while (xp >= xpNeededForNextLevel) {
       level++;
@@ -2112,7 +2125,8 @@ export class GameScene extends Phaser.Scene {
       );
       
       // Check if we level up again
-      if (xp < level * 100) break;
+      const nextLevelXp = getTotalXpForLevel(level) + getXpForLevel(level);
+      if (xp < nextLevelXp) break;
     }
   }
 
@@ -2833,7 +2847,7 @@ export class GameScene extends Phaser.Scene {
     const toolType = toolData?.type || 'fists';
     
     // Get attack properties from tool data or use defaults
-    const attackProps = toolData?.attack || { range: 25, arc: 0.8, speed: 350, knockback: 50 };
+    const attackProps = toolData?.attack || { range: 40, arc: 1.2, speed: 350, knockback: 50 };
     
     // Calculate damage based on tool
     let damage = 5; // Base damage with hands
@@ -3277,11 +3291,7 @@ export class GameScene extends Phaser.Scene {
     const impactX = px + dirX * 22;
     const impactY = py + dirY * 22;
     
-    // Fist shape
-    graphics.fillStyle(0xffcc99, 0.8);
-    graphics.fillCircle(impactX, impactY, 5);
-    
-    // Impact lines
+    // Impact lines only (no orb)
     graphics.lineStyle(2, 0xffffaa, 0.7);
     for (let i = 0; i < 3; i++) {
       const angle = Math.atan2(dirY, dirX) + (i - 1) * 0.5;
@@ -3294,8 +3304,6 @@ export class GameScene extends Phaser.Scene {
     this.tweens.add({
       targets: graphics,
       alpha: 0,
-      scaleX: 1.3,
-      scaleY: 1.3,
       duration: 80,
       onComplete: () => graphics.destroy()
     });
