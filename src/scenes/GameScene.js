@@ -721,9 +721,44 @@ export class GameScene extends Phaser.Scene {
       resource.destroy();
     }
     
-    // If host, relay to other clients
+    // If host, relay to other clients and schedule respawn
     if (this.isHost && peerId !== this.localPlayerId) {
       this.networkManager.sendToAll(MessageTypes.RESOURCE_HARVEST_COMPLETE, data);
+      
+      // Schedule respawn (host is responsible for respawning)
+      const oldX = data.x;
+      const oldY = data.y;
+      const type = data.type;
+      
+      const gx = Math.floor(oldX / (this.landTileSize * this.tileSize));
+      const gy = Math.floor(oldY / (this.landTileSize * this.tileSize));
+      const landKey = `${gx},${gy}`;
+      const landType = this.unlockedLands[landKey];
+      
+      if (landType) {
+        const respawnDelay = 5000 + this.getSeededRandomForPosition(Math.floor(oldX), Math.floor(oldY), Date.now() % 1000) * 10000;
+        
+        this.time.delayedCall(respawnDelay, () => {
+          const startX = gx * this.landTileSize * this.tileSize;
+          const startY = gy * this.landTileSize * this.tileSize;
+          const padding = 2 * this.tileSize;
+          
+          const xRand = this.getSeededRandomForPosition(gx, gy, Date.now() % 10000);
+          const yRand = this.getSeededRandomForPosition(gx, gy, (Date.now() + 1) % 10000);
+          const x = startX + padding + xRand * (this.landTileSize * this.tileSize - padding * 2);
+          const y = startY + padding + yRand * (this.landTileSize * this.tileSize - padding * 2);
+          
+          const newResource = this.createResource(x, y, type);
+          
+          // Broadcast respawn to clients
+          this.networkManager.sendToAll(MessageTypes.RESOURCE_RESPAWN, {
+            id: newResource.id,
+            x: x,
+            y: y,
+            type: type
+          });
+        });
+      }
     }
   }
   
@@ -3467,6 +3502,7 @@ export class GameScene extends Phaser.Scene {
       towers: towersData,
       currentTool: this.registry.get('currentTool'),
       tools: this.registry.get('tools'),
+      storedTools: this.registry.get('storedTools') || [],
       upgrades: this.registry.get('upgrades'),
       xp: this.registry.get('xp'),
       level: this.registry.get('level'),

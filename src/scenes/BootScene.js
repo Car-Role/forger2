@@ -55,6 +55,7 @@ export class BootScene extends Phaser.Scene {
           this.registry.set('towers', data.towers || []);
           this.registry.set('currentTool', data.currentTool || 'hands');
           this.registry.set('tools', data.tools || ['hands']);
+          this.registry.set('storedTools', data.storedTools || []);
           this.registry.set('upgrades', data.upgrades || {
             miningSpeed: 0,
             harvestYield: 0,
@@ -129,6 +130,7 @@ export class BootScene extends Phaser.Scene {
       this.registry.set('equipment', {});
       this.registry.set('currentTool', 'hands');
       this.registry.set('tools', ['hands']);
+      this.registry.set('storedTools', []);
       this.registry.set('upgrades', {
         miningSpeed: 0,
         harvestYield: 0,
@@ -159,6 +161,7 @@ export class BootScene extends Phaser.Scene {
     this.registry.set('towers', []);
     this.registry.set('currentTool', 'hands');
     this.registry.set('tools', ['hands']);
+    this.registry.set('storedTools', []);
     this.registry.set('upgrades', {
       miningSpeed: 0,
       harvestYield: 0,

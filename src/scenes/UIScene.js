@@ -1102,10 +1102,13 @@ export class UIScene extends Phaser.Scene {
     this.storageContent.removeAll(true);
     
     const inventory = this.registry.get('inventory');
+    const ownedTools = this.registry.get('tools') || [];
     const storage = this.registry.get('storage') || {};
+    const storedTools = this.registry.get('storedTools') || [];
+    const currentTool = this.registry.get('currentTool');
     
-    // Deposit section
-    const depositTitle = this.add.text(10, 0, 'Deposit from Inventory:', {
+    // Deposit Resources section
+    const depositTitle = this.add.text(10, 0, 'Deposit Resources:', {
       fontSize: '14px',
       fontFamily: 'Arial',
       fontStyle: 'bold'
@@ -1142,15 +1145,58 @@ export class UIScene extends Phaser.Scene {
       y += 22;
     });
     
-    // Withdraw section
-    const withdrawTitle = this.add.text(10, y + 10, 'Withdraw from Storage:', {
+    // Deposit Tools section
+    const toolsToStore = ownedTools.filter(t => t !== 'hands' && t !== currentTool);
+    if (toolsToStore.length > 0) {
+      y += 10;
+      const depositToolsTitle = this.add.text(10, y, 'Store Tools:', {
+        fontSize: '14px',
+        fontFamily: 'Arial',
+        fontStyle: 'bold',
+        color: '#88aaff'
+      });
+      this.storageContent.add(depositToolsTitle);
+      y += 25;
+      
+      toolsToStore.forEach(toolKey => {
+        const tool = TOOLS[toolKey];
+        if (!tool) return;
+        
+        const container = this.add.container(10, y);
+        const text = this.add.text(0, 0, tool.name, {
+          fontSize: '12px',
+          fontFamily: 'Arial',
+          color: '#aaccff'
+        });
+        
+        const storeBtn = this.add.text(150, -2, 'Store', {
+          fontSize: '11px',
+          fontFamily: 'Arial',
+          backgroundColor: '#4a6a8a',
+          padding: { x: 4, y: 2 }
+        }).setInteractive({ useHandCursor: true });
+        
+        storeBtn.on('pointerdown', () => {
+          this.storeTool(toolKey);
+          this.updateStoragePanel();
+        });
+        
+        container.add([text, storeBtn]);
+        this.storageContent.add(container);
+        y += 22;
+      });
+    }
+    
+    // Withdraw Resources section
+    y += 10;
+    const withdrawTitle = this.add.text(10, y, 'Withdraw Resources:', {
       fontSize: '14px',
       fontFamily: 'Arial',
       fontStyle: 'bold'
     });
     this.storageContent.add(withdrawTitle);
     
-    y += 35;
+    y += 25;
     Object.keys(storage).forEach(key => {
       if (storage[key] <= 0) return;
       
@@ -1179,6 +1225,47 @@ export class UIScene extends Phaser.Scene {
       this.storageContent.add(container);
       y += 22;
     });
+    
+    // Withdraw Tools section
+    if (storedTools.length > 0) {
+      y += 10;
+      const withdrawToolsTitle = this.add.text(10, y, 'Retrieve Tools:', {
+        fontSize: '14px',
+        fontFamily: 'Arial',
+        fontStyle: 'bold',
+        color: '#88ff88'
+      });
+      this.storageContent.add(withdrawToolsTitle);
+      y += 25;
+      
+      storedTools.forEach(toolKey => {
+        const tool = TOOLS[toolKey];
+        if (!tool) return;
+        
+        const container = this.add.container(10, y);
+        const text = this.add.text(0, 0, tool.name, {
+          fontSize: '12px',
+          fontFamily: 'Arial',
+          color: '#aaffaa'
+        });
+        
+        const retrieveBtn = this.add.text(150, -2, 'Retrieve', {
+          fontSize: '11px',
+          fontFamily: 'Arial',
+          backgroundColor: '#6a8a4a',
+          padding: { x: 4, y: 2 }
+        }).setInteractive({ useHandCursor: true });
+        
+        retrieveBtn.on('pointerdown', () => {
+          this.retrieveTool(toolKey);
+          this.updateStoragePanel();
+        });
+        
+        container.add([text, retrieveBtn]);
+        this.storageContent.add(container);
+        y += 22;
+      });
+    }
   }
 
   depositItem(key, amount) {
@@ -1232,6 +1319,69 @@ export class UIScene extends Phaser.Scene {
       if (networkManager) {
         networkManager.broadcast(MessageTypes.STORAGE_UPDATE, {
           storage: storage
+        });
+      }
+    }
+  }
+  
+  storeTool(toolKey) {
+    const ownedTools = this.registry.get('tools') || [];
+    const storedTools = this.registry.get('storedTools') || [];
+    const currentTool = this.registry.get('currentTool');
+    
+    // Can't store currently equipped tool
+    if (toolKey === currentTool) {
+      this.showNotification('Unequip tool first!');
+      return;
+    }
+    
+    // Remove from owned tools
+    const index = ownedTools.indexOf(toolKey);
+    if (index === -1) return;
+    
+    ownedTools.splice(index, 1);
+    storedTools.push(toolKey);
+    
+    this.registry.set('tools', ownedTools);
+    this.registry.set('storedTools', storedTools);
+    
+    this.showNotification(`Stored ${TOOLS[toolKey].name}`);
+    this.inventoryUI.refresh();
+    
+    // Broadcast in multiplayer
+    if (this.isMultiplayer) {
+      const networkManager = this.registry.get('networkManager');
+      if (networkManager) {
+        networkManager.broadcast(MessageTypes.STORAGE_UPDATE, {
+          storedTools: storedTools
+        });
+      }
+    }
+  }
+  
+  retrieveTool(toolKey) {
+    const ownedTools = this.registry.get('tools') || [];
+    const storedTools = this.registry.get('storedTools') || [];
+    
+    // Remove from stored tools
+    const index = storedTools.indexOf(toolKey);
+    if (index === -1) return;
+    
+    storedTools.splice(index, 1);
+    ownedTools.push(toolKey);
+    
+    this.registry.set('tools', ownedTools);
+    this.registry.set('storedTools', storedTools);
+    
+    this.showNotification(`Retrieved ${TOOLS[toolKey].name}`);
+    this.inventoryUI.refresh();
+    
+    // Broadcast in multiplayer
+    if (this.isMultiplayer) {
+      const networkManager = this.registry.get('networkManager');
+      if (networkManager) {
+        networkManager.broadcast(MessageTypes.STORAGE_UPDATE, {
+          storedTools: storedTools
         });
       }
     }
@@ -2023,8 +2173,10 @@ export class UIScene extends Phaser.Scene {
     const networkManager = this.registry.get('networkManager');
     if (!networkManager) return;
     
-    // Multiplayer info panel in top-right
-    this.mpPanel = this.add.container(1100, 10);
+    const { width, height } = this.cameras.main;
+    
+    // Multiplayer info panel in bottom-right
+    this.mpPanel = this.add.container(width - 100, height - 90);
     
     // Background
     const mpBg = this.add.rectangle(0, 0, 90, 80, 0x000000, 0.7)
