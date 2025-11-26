@@ -4,6 +4,7 @@ import { MultiplayerMenuScene } from './scenes/MultiplayerMenuScene.js';
 import { BootScene } from './scenes/BootScene.js';
 import { GameScene } from './scenes/GameScene.js';
 import { UIScene } from './scenes/UIScene.js';
+import { MineScene } from './scenes/MineScene.js';
 
 const config = {
   type: Phaser.AUTO,
@@ -18,7 +19,7 @@ const config = {
       debug: false
     }
   },
-  scene: [MainMenuScene, MultiplayerMenuScene, BootScene, GameScene, UIScene],
+  scene: [MainMenuScene, MultiplayerMenuScene, BootScene, GameScene, UIScene, MineScene],
   input: {
     keyboard: {
       capture: [

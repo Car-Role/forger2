@@ -79,7 +79,17 @@ export const MessageTypes = {
   
   // Ping/Latency
   PING: 'ping',
-  PONG: 'pong'
+  PONG: 'pong',
+  
+  // Mine System
+  MINE_ENTER: 'mine_enter',
+  MINE_EXIT: 'mine_exit',
+  MINE_STATE: 'mine_state',
+  MINE_RESOURCE_HARVEST: 'mine_resource_harvest',
+  MINE_ENEMY_SPAWN: 'mine_enemy_spawn',
+  MINE_ENEMY_DEATH: 'mine_enemy_death',
+  MINE_PLAYER_POSITION: 'mine_player_position',
+  MINE_REFRESH: 'mine_refresh'
 };
 
 // Message priority levels for batching

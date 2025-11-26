@@ -136,6 +136,8 @@ export class GameScene extends Phaser.Scene {
     this.events.on('startBuildingPlacement', this.startBuildingPlacement, this);
     this.events.on('startTowerPlacement', this.startTowerPlacement, this);
     this.events.on('buyLand', this.buyLand, this);
+    this.events.on('openMine', this.enterMine, this);
+    this.events.on('mineExited', this.onMineExited, this);
     
     // Building placement state
     this.isPlacingBuilding = false;
@@ -321,7 +323,25 @@ export class GameScene extends Phaser.Scene {
       case MessageTypes.STORAGE_UPDATE:
         this.handleStorageUpdate(data, peerId);
         break;
+        
+      // Mine system
+      case MessageTypes.MINE_ENTER:
+        this.handleRemoteMineEnter(data, peerId);
+        break;
+      case MessageTypes.MINE_EXIT:
+        this.handleRemoteMineExit(data, peerId);
+        break;
     }
+  }
+  
+  handleRemoteMineEnter(data, peerId) {
+    // Show notification that player entered mine
+    this.showFloatingText(this.player.x, this.player.y - 50, `P${data.playerNumber} entered the mine`);
+  }
+  
+  handleRemoteMineExit(data, peerId) {
+    // Show notification that player exited mine
+    this.showFloatingText(this.player.x, this.player.y - 50, `P${data.playerNumber} exited the mine`);
   }
   
   handleStorageUpdate(data, peerId) {
@@ -3469,6 +3489,52 @@ export class GameScene extends Phaser.Scene {
       case 'mine':
         this.events.emit('openMine');
         break;
+    }
+  }
+
+  enterMine() {
+    // Check/initialize mine refresh time (5 minutes = 300000ms)
+    let mineRefreshTime = this.registry.get('mineRefreshTime');
+    if (!mineRefreshTime || Date.now() > mineRefreshTime) {
+      mineRefreshTime = Date.now() + 300000; // 5 minutes from now
+      this.registry.set('mineRefreshTime', mineRefreshTime);
+    }
+    
+    // Store player position to return to
+    this.registry.set('mineReturnPosition', { x: this.player.x, y: this.player.y });
+    
+    // Pause current scenes
+    this.scene.pause('GameScene');
+    this.scene.pause('UIScene');
+    
+    // Start mine scene
+    this.scene.launch('MineScene', {
+      mineId: 'main',
+      isMultiplayer: this.isMultiplayer,
+      isHost: this.isHost,
+      networkManager: this.networkManager,
+      playerNumber: this.playerNumber || 1
+    });
+    
+    // Broadcast to other players in multiplayer
+    if (this.isMultiplayer) {
+      this.networkManager.broadcast(MessageTypes.MINE_ENTER, {
+        playerNumber: this.playerNumber || 1
+      });
+    }
+  }
+
+  onMineExited() {
+    // Restore player position
+    const returnPos = this.registry.get('mineReturnPosition');
+    if (returnPos) {
+      this.player.setPosition(returnPos.x, returnPos.y);
+    }
+    
+    // Refresh inventory UI
+    const uiScene = this.scene.get('UIScene');
+    if (uiScene && uiScene.inventoryUI) {
+      uiScene.inventoryUI.refresh();
     }
   }
 
