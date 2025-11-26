@@ -80,49 +80,18 @@ export class UIScene extends Phaser.Scene {
     this.input.keyboard.on('keydown-ESC', () => {
       if (this.inventoryUI.isOpen) {
         this.inventoryUI.toggle();
-      } else {
+      } else if (this.activeModal) {
         this.closeModal();
+      } else {
+        // Toggle settings menu
+        this.toggleSettings();
       }
     });
   }
 
   createTabButtons() {
-    // Inventory button
-    const invBtn = this.add.text(1010, 10, 'Inv [I]', {
-      fontSize: '12px',
-      fontFamily: 'Arial',
-      backgroundColor: '#3a4a6a',
-      padding: { x: 6, y: 4 }
-    }).setInteractive({ useHandCursor: true });
-    
-    invBtn.on('pointerdown', () => this.inventoryUI.toggle());
-    invBtn.on('pointerover', () => invBtn.setStyle({ backgroundColor: '#5a6a8a' }));
-    invBtn.on('pointerout', () => invBtn.setStyle({ backgroundColor: '#3a4a6a' }));
-    
-    const tabs = [
-      { key: 'crafting', label: 'Craft [C]', x: 1070 }
-    ];
-    
+    // Buttons will be created in createSettingsMenu to ensure proper ordering
     this.tabButtons = {};
-    
-    tabs.forEach(tab => {
-      const btn = this.add.text(tab.x, 10, tab.label, {
-        fontSize: '12px',
-        fontFamily: 'Arial',
-        backgroundColor: '#3a4a6a',
-        padding: { x: 6, y: 4 }
-      }).setInteractive({ useHandCursor: true });
-      
-      btn.on('pointerdown', () => this.showPanel(tab.key));
-      btn.on('pointerover', () => btn.setStyle({ backgroundColor: '#5a6a8a' }));
-      btn.on('pointerout', () => {
-        btn.setStyle({ 
-          backgroundColor: this.currentPanel === tab.key ? '#5a7a9a' : '#3a4a6a' 
-        });
-      });
-      
-      this.tabButtons[tab.key] = btn;
-    });
   }
 
   showPanel(panelKey) {
@@ -148,17 +117,18 @@ export class UIScene extends Phaser.Scene {
   }
 
   createInfoPanel() {
-    this.infoPanel = this.add.container(10, 10);
+    // Dev info panel - bottom left (hidden by default)
+    this.infoPanel = this.add.container(10, 680);
     
     const bg = this.add.rectangle(0, 0, 200, 100, 0x2a2a3a, 0.9)
       .setOrigin(0, 0);
     
-    this.levelText = this.add.text(10, 10, 'Level: 1', {
+    this.infoLevelText = this.add.text(10, 10, 'Level: 1', {
       fontSize: '16px',
       fontFamily: 'Arial'
     });
     
-    this.xpText = this.add.text(10, 32, 'XP: 0 / 100', {
+    this.infoXpText = this.add.text(10, 32, 'XP: 0 / 100', {
       fontSize: '14px',
       fontFamily: 'Arial'
     });
@@ -173,7 +143,10 @@ export class UIScene extends Phaser.Scene {
       fontFamily: 'Arial'
     });
     
-    this.infoPanel.add([bg, this.levelText, this.xpText, this.landsText, this.toolText]);
+    this.infoPanel.add([bg, this.infoLevelText, this.infoXpText, this.landsText, this.toolText]);
+    
+    // Hidden by default - unlocked with dev tools
+    this.infoPanel.setVisible(false);
   }
 
   updateInfoPanel() {
@@ -183,8 +156,8 @@ export class UIScene extends Phaser.Scene {
     const unlockedLands = this.registry.get('unlockedLands') || {};
     const currentTool = this.registry.get('currentTool');
     
-    this.levelText.setText(`Level: ${level}`);
-    this.xpText.setText(`XP: ${xp} / ${xpNeeded}`);
+    this.infoLevelText.setText(`Level: ${level}`);
+    this.infoXpText.setText(`XP: ${xp} / ${xpNeeded}`);
     this.landsText.setText(`Lands: ${Object.keys(unlockedLands).length}`);
     
     const toolName = currentTool === 'hands' ? 'Hands' : TOOLS[currentTool]?.name || 'Hands';
@@ -737,8 +710,8 @@ export class UIScene extends Phaser.Scene {
   }
 
   createStatusBars() {
-    // Health bar
-    this.healthBarContainer = this.add.container(10, 120);
+    // Health bar - top left
+    this.healthBarContainer = this.add.container(10, 10);
     const healthLabel = this.add.text(0, 0, 'HP', { fontSize: '12px', fontFamily: 'Arial' });
     this.healthBarBg = this.add.rectangle(30, 4, 150, 14, 0x333333).setOrigin(0, 0);
     this.healthBarFill = this.add.rectangle(32, 6, 146, 10, 0xff4444).setOrigin(0, 0);
@@ -746,7 +719,7 @@ export class UIScene extends Phaser.Scene {
     this.healthBarContainer.add([healthLabel, this.healthBarBg, this.healthBarFill, this.healthText]);
 
     // XP bar (below HP)
-    this.xpBarContainer = this.add.container(10, 140);
+    this.xpBarContainer = this.add.container(10, 30);
     this.levelText = this.add.text(0, 0, 'Lv1', { fontSize: '12px', fontFamily: 'Arial', color: '#ffdd44' });
     this.xpBarBg = this.add.rectangle(30, 4, 150, 14, 0x333333).setOrigin(0, 0);
     this.xpBarFill = this.add.rectangle(32, 6, 146, 10, 0xffdd44).setOrigin(0, 0);
@@ -754,7 +727,7 @@ export class UIScene extends Phaser.Scene {
     this.xpBarContainer.add([this.levelText, this.xpBarBg, this.xpBarFill, this.xpText]);
 
     // Energy bar
-    this.energyBarContainer = this.add.container(10, 160);
+    this.energyBarContainer = this.add.container(10, 50);
     const energyLabel = this.add.text(0, 0, 'EN', { fontSize: '12px', fontFamily: 'Arial' });
     this.energyBarBg = this.add.rectangle(30, 4, 150, 14, 0x333333).setOrigin(0, 0);
     this.energyBarFill = this.add.rectangle(32, 6, 146, 10, 0x44aaff).setOrigin(0, 0);
@@ -1266,18 +1239,51 @@ export class UIScene extends Phaser.Scene {
 
   createSettingsMenu() {
     // Settings already loaded in create()
-    
-    // Settings button
-    const settingsBtn = this.add.text(1150, 10, '⚙️ Settings', {
+    const { width } = this.cameras.main;
+    const buttonStyle = {
       fontSize: '12px',
       fontFamily: 'Arial',
       backgroundColor: '#3a4a6a',
-      padding: { x: 6, y: 4 }
-    }).setInteractive({ useHandCursor: true });
+      padding: { x: 8, y: 4 }
+    };
     
+    // Create all top-right buttons with proper spacing
+    let xPos = width - 10;
+    
+    // Settings button (rightmost)
+    const settingsBtn = this.add.text(xPos, 10, '⚙️', buttonStyle)
+      .setOrigin(1, 0)
+      .setInteractive({ useHandCursor: true });
     settingsBtn.on('pointerdown', () => this.toggleSettings());
     settingsBtn.on('pointerover', () => settingsBtn.setStyle({ backgroundColor: '#5a6a8a' }));
     settingsBtn.on('pointerout', () => settingsBtn.setStyle({ backgroundColor: '#3a4a6a' }));
+    xPos -= settingsBtn.width + 10;
+    
+    // Craft button
+    const craftBtn = this.add.text(xPos, 10, 'Craft [C]', buttonStyle)
+      .setOrigin(1, 0)
+      .setInteractive({ useHandCursor: true });
+    craftBtn.on('pointerdown', () => this.showPanel('crafting'));
+    craftBtn.on('pointerover', () => craftBtn.setStyle({ backgroundColor: '#5a6a8a' }));
+    craftBtn.on('pointerout', () => {
+      craftBtn.setStyle({ 
+        backgroundColor: this.currentPanel === 'crafting' ? '#5a7a9a' : '#3a4a6a' 
+      });
+    });
+    xPos -= craftBtn.width + 10;
+    
+    // Inventory button
+    const invBtn = this.add.text(xPos, 10, 'Inv [I]', buttonStyle)
+      .setOrigin(1, 0)
+      .setInteractive({ useHandCursor: true });
+    invBtn.on('pointerdown', () => this.inventoryUI.toggle());
+    invBtn.on('pointerover', () => invBtn.setStyle({ backgroundColor: '#5a6a8a' }));
+    invBtn.on('pointerout', () => invBtn.setStyle({ backgroundColor: '#3a4a6a' }));
+    
+    this.tabButtons = {
+      crafting: craftBtn,
+      inventory: invBtn
+    };
     
     // Settings panel - centered and sized to fit screen
     const panelWidth = 550;
@@ -1456,7 +1462,7 @@ export class UIScene extends Phaser.Scene {
     saveBtn.on('pointerout', () => saveBtn.setStyle({ backgroundColor: '#4a8a4a' }));
     this.settingsContent.add(saveBtn);
     
-    const menuBtn = this.add.text(280, y, 'Main Menu', {
+    const menuBtn = this.add.text(280, y, 'Quit & Save', {
       fontSize: '14px',
       fontFamily: 'Arial',
       fontStyle: 'bold',
@@ -1567,15 +1573,15 @@ export class UIScene extends Phaser.Scene {
   }
 
   confirmReturnToMenu() {
-    // Create confirmation dialog
+    // Create confirmation dialog (above settings panel which is at 5000)
     const { width, height } = this.cameras.main;
     
     const overlay = this.add.rectangle(0, 0, width, height, 0x000000, 0.7)
       .setOrigin(0)
-      .setDepth(3000)
+      .setDepth(6000)
       .setInteractive();
     
-    const dialog = this.add.container(width / 2, height / 2).setDepth(3001);
+    const dialog = this.add.container(width / 2, height / 2).setDepth(6001);
     
     const dialogBg = this.add.rectangle(0, 0, 350, 180, 0x2a2a4a)
       .setStrokeStyle(2, 0x5a5a7a);
@@ -1820,17 +1826,43 @@ export class UIScene extends Phaser.Scene {
   }
 
   createDevTools() {
-    // Dev tools toggle button
+    // Dev tools - hidden by default, tap tilde 5 times to unlock
     this.devToolsVisible = false;
+    this.devToolsUnlocked = false;
+    this.tildeTapCount = 0;
+    this.tildeTapTimer = null;
     
-    const toggleBtn = this.add.text(10, 780, '🔧 DEV', {
+    // Listen for tilde key to unlock dev tools
+    this.input.keyboard.on('keydown-BACKTICK', () => {
+      this.tildeTapCount++;
+      
+      // Reset count after 2 seconds of no taps
+      if (this.tildeTapTimer) {
+        clearTimeout(this.tildeTapTimer);
+      }
+      this.tildeTapTimer = setTimeout(() => {
+        this.tildeTapCount = 0;
+      }, 2000);
+      
+      // Unlock after 5 taps
+      if (this.tildeTapCount >= 5 && !this.devToolsUnlocked) {
+        this.devToolsUnlocked = true;
+        this.devToggleBtn.setVisible(true);
+        this.infoPanel.setVisible(true);
+        this.showFloatingMessage('Dev tools unlocked!');
+      }
+    });
+    
+    // Dev tools toggle button (hidden until unlocked)
+    this.devToggleBtn = this.add.text(10, 780, '🔧 DEV', {
       fontSize: '10px',
       fontFamily: 'Arial',
       backgroundColor: '#444444',
       padding: { x: 4, y: 2 }
     }).setInteractive({ useHandCursor: true });
+    this.devToggleBtn.setVisible(false);
     
-    toggleBtn.on('pointerdown', () => {
+    this.devToggleBtn.on('pointerdown', () => {
       this.devToolsVisible = !this.devToolsVisible;
       this.devToolsPanel.setVisible(this.devToolsVisible);
     });
@@ -2072,5 +2104,25 @@ export class UIScene extends Phaser.Scene {
         this.mpLatencyText.setColor('#ff8888');
       }
     }
+  }
+  
+  showFloatingMessage(message) {
+    const { width, height } = this.cameras.main;
+    const text = this.add.text(width / 2, height / 2, message, {
+      fontSize: '24px',
+      fontFamily: 'Arial',
+      color: '#ffdd44',
+      stroke: '#000000',
+      strokeThickness: 4
+    }).setOrigin(0.5);
+    
+    this.tweens.add({
+      targets: text,
+      y: height / 2 - 50,
+      alpha: 0,
+      duration: 1500,
+      ease: 'Power2',
+      onComplete: () => text.destroy()
+    });
   }
 }
