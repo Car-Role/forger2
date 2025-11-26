@@ -82,10 +82,27 @@ export class MineScene extends Phaser.Scene {
     this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
     this.cameras.main.setZoom(1.2);
     
+    // Exit state - disable for 1 second to prevent accidental immediate exit
+    this.isExiting = false;
+    this.canExit = false;
+    this.time.delayedCall(1000, () => { this.canExit = true; });
+    
+    // Exit zone (top center, below the wall) - must be created BEFORE setupCollisions
+    this.exitZone = this.add.rectangle(this.mineWidth / 2, 80, 120, 80, 0x44ff44, 0.3)
+      .setOrigin(0.5);
+    this.physics.add.existing(this.exitZone, true);
+    
+    const exitText = this.add.text(this.mineWidth / 2, 60, '⬆ EXIT ⬆', {
+      fontSize: '16px',
+      fontFamily: 'Arial',
+      fontStyle: 'bold',
+      color: '#44ff44'
+    }).setOrigin(0.5).setDepth(200);
+    
     // Setup controls
     this.setupControls();
     
-    // Setup collisions
+    // Setup collisions (after exitZone is created)
     this.setupCollisions();
     
     // Setup network handlers
@@ -112,17 +129,6 @@ export class MineScene extends Phaser.Scene {
     this.lastAttackTime = 0;
     this.attackCooldownMax = 400;
     this.attackCooldown = 0; // Current cooldown remaining (for animation)
-    
-    // Exit zone (top center)
-    this.exitZone = this.add.rectangle(this.mineWidth / 2, 40, 100, 60, 0x44ff44, 0.3)
-      .setOrigin(0.5);
-    this.physics.add.existing(this.exitZone, true);
-    
-    const exitText = this.add.text(this.mineWidth / 2, 40, '⬆ EXIT', {
-      fontSize: '14px',
-      fontFamily: 'Arial',
-      color: '#44ff44'
-    }).setOrigin(0.5);
     
     // Refresh timer display
     this.refreshText = this.add.text(this.mineWidth / 2, 80, '', {
@@ -172,9 +178,9 @@ export class MineScene extends Phaser.Scene {
   }
 
   createPlayer() {
-    // Spawn near exit
+    // Spawn away from exit zone (exit is at y=40-120)
     const spawnX = this.mineWidth / 2 + (this.playerNumber - 1) * 40 - 40;
-    const spawnY = 120;
+    const spawnY = 200;
     
     // Use the same player sprite as overworld
     this.player = this.physics.add.sprite(spawnX, spawnY, 'player');
@@ -799,11 +805,17 @@ export class MineScene extends Phaser.Scene {
   }
 
   handleExitZone() {
-    // Exit immediately when touching exit zone
-    this.exitMine();
+    // Exit when touching exit zone (after initial delay)
+    if (this.canExit && !this.isExiting) {
+      this.exitMine();
+    }
   }
 
   exitMine() {
+    // Prevent multiple calls
+    if (this.isExiting) return;
+    this.isExiting = true;
+    
     // Broadcast exit in multiplayer
     if (this.isMultiplayer) {
       this.networkManager.broadcast(MessageTypes.MINE_EXIT, {

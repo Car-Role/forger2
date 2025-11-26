@@ -571,8 +571,12 @@ export class UIScene extends Phaser.Scene {
   createLandPurchasePanel() {
     this.landPurchasePanel = this.add.container(250, 100);
     this.landPurchasePanel.setVisible(false);
+    this.landPurchasePanel.setDepth(5000);
     
-    const bg = this.add.rectangle(0, 0, 420, 500, 0x2a2a3a, 0.95).setOrigin(0, 0);
+    const panelHeight = 400;
+    const contentHeight = 340; // Height for scrollable area
+    
+    const bg = this.add.rectangle(0, 0, 420, panelHeight, 0x2a2a3a, 0.95).setOrigin(0, 0);
     const title = this.add.text(200, 15, 'Buy Land', {
       fontSize: '20px',
       fontFamily: 'Arial',
@@ -589,10 +593,51 @@ export class UIScene extends Phaser.Scene {
     
     this.landPurchasePanel.add([bg, title, closeBtn]);
     
+    // Create scrollable container for land options
     this.landOptions = this.add.container(10, 50);
     this.landPurchasePanel.add(this.landOptions);
     
+    // Create mask for scrolling
+    const maskShape = this.make.graphics();
+    maskShape.fillStyle(0xffffff);
+    maskShape.fillRect(250 + 5, 100 + 45, 400, contentHeight);
+    const mask = maskShape.createGeometryMask();
+    this.landOptions.setMask(mask);
+    
+    // Scroll state
+    this.landOptionsScroll = 0;
+    this.landOptionsMaxScroll = 0;
+    this.landOptionsContentHeight = contentHeight;
+    
+    // Scroll buttons
+    const scrollUpBtn = this.add.text(380, 50, '▲', {
+      fontSize: '16px',
+      fontFamily: 'Arial',
+      backgroundColor: '#4a4a5a',
+      padding: { x: 8, y: 4 }
+    }).setInteractive({ useHandCursor: true });
+    scrollUpBtn.on('pointerdown', () => this.scrollLandOptions(-60));
+    
+    const scrollDownBtn = this.add.text(380, panelHeight - 30, '▼', {
+      fontSize: '16px',
+      fontFamily: 'Arial',
+      backgroundColor: '#4a4a5a',
+      padding: { x: 8, y: 4 }
+    }).setInteractive({ useHandCursor: true });
+    scrollDownBtn.on('pointerdown', () => this.scrollLandOptions(60));
+    
+    this.landPurchasePanel.add([scrollUpBtn, scrollDownBtn]);
+    
     this.pendingLandPurchase = null;
+  }
+  
+  scrollLandOptions(amount) {
+    this.landOptionsScroll = Phaser.Math.Clamp(
+      this.landOptionsScroll + amount,
+      0,
+      Math.max(0, this.landOptionsMaxScroll - this.landOptionsContentHeight)
+    );
+    this.landOptions.y = 50 - this.landOptionsScroll;
   }
 
   openLandPurchase(data) {
@@ -608,6 +653,10 @@ export class UIScene extends Phaser.Scene {
 
   updateLandOptions() {
     this.landOptions.removeAll(true);
+    
+    // Reset scroll position
+    this.landOptionsScroll = 0;
+    this.landOptions.y = 50;
     
     const availableTypes = this.gameScene.getAvailableLandTypes();
     const inventory = this.registry.get('inventory');
@@ -691,6 +740,9 @@ export class UIScene extends Phaser.Scene {
       this.landOptions.add(container);
       y += 65;
     });
+    
+    // Set max scroll based on content height
+    this.landOptionsMaxScroll = y;
   }
 
   showNotification(message) {
