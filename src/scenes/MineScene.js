@@ -36,6 +36,9 @@ export class MineScene extends Phaser.Scene {
     this.mineHeight = 1200;
     this.tileSize = 32;
     
+    // Set physics world bounds to match mine size
+    this.physics.world.setBounds(0, 0, this.mineWidth, this.mineHeight);
+    
     // Get player data from registry
     this.currentTool = this.registry.get('currentTool') || 'hands';
     this.tools = this.registry.get('tools') || ['hands'];
@@ -161,13 +164,22 @@ export class MineScene extends Phaser.Scene {
     const spawnX = this.mineWidth / 2 + (this.playerNumber - 1) * 40 - 40;
     const spawnY = 120;
     
-    this.player = this.physics.add.sprite(spawnX, spawnY, 'player');
-    this.player.setCollideWorldBounds(true);
+    // Create player as a visible rectangle (since we may not have sprite loaded)
+    this.player = this.add.rectangle(spawnX, spawnY, 24, 32, 0x44aaff);
+    this.player.setStrokeStyle(2, 0xffffff);
+    this.physics.add.existing(this.player);
+    this.player.body.setCollideWorldBounds(true);
     this.player.setDepth(100);
-    this.player.body.setSize(20, 24);
+    
+    // Player label
+    this.playerLabel = this.add.text(spawnX, spawnY - 25, `P${this.playerNumber}`, {
+      fontSize: '10px',
+      fontFamily: 'Arial',
+      color: '#ffffff'
+    }).setOrigin(0.5).setDepth(101);
     
     // Player light radius indicator
-    this.playerLight = this.add.circle(spawnX, spawnY, 120, 0xffff88, 0.1);
+    this.playerLight = this.add.circle(spawnX, spawnY, 120, 0xffff88, 0.15);
     this.playerLight.setDepth(50);
   }
 
@@ -191,13 +203,13 @@ export class MineScene extends Phaser.Scene {
       this.createRock(x, y, rockType, `rock_${i}`);
     }
     
-    // Generate enemies (only host spawns in multiplayer)
+    // Generate enemies (only host spawns in multiplayer) - MORE enemies for danger!
     if (!this.isMultiplayer || this.isHost) {
-      const enemyCount = 8 + Math.floor(rng() * 6);
+      const enemyCount = 20 + Math.floor(rng() * 15); // 20-35 enemies
       
       for (let i = 0; i < enemyCount; i++) {
         const x = padding + rng() * (this.mineWidth - padding * 2);
-        const y = 300 + rng() * (this.mineHeight - 400);
+        const y = 250 + rng() * (this.mineHeight - 350);
         
         const enemyType = MINE_ENEMIES[Math.floor(rng() * MINE_ENEMIES.length)];
         this.createEnemy(x, y, enemyType, `enemy_${i}`);
@@ -242,7 +254,8 @@ export class MineScene extends Phaser.Scene {
     if (!rockData) return null;
     
     const rock = this.add.rectangle(x, y, 40, 40, rockData.color);
-    rock.setStrokeStyle(2, 0x000000);
+    rock.setStrokeStyle(3, 0xffffff);
+    rock.setDepth(10);
     this.physics.add.existing(rock, true);
     
     rock.id = id;
@@ -252,13 +265,23 @@ export class MineScene extends Phaser.Scene {
     rock.drops = rockData.drops;
     rock.tier = rockData.tier;
     
+    // Rock label
+    rock.label = this.add.text(x, y, rockData.name.charAt(0), {
+      fontSize: '14px',
+      fontFamily: 'Arial',
+      fontStyle: 'bold',
+      color: '#ffffff'
+    }).setOrigin(0.5).setDepth(11);
+    
     // Add sparkle effect for rare rocks
     if (rockData.tier >= 4) {
-      rock.sparkle = this.add.circle(x, y, 25, rockData.color, 0.3);
+      rock.sparkle = this.add.circle(x, y, 28, rockData.color, 0.4);
+      rock.sparkle.setDepth(9);
       this.tweens.add({
         targets: rock.sparkle,
-        alpha: 0.1,
-        duration: 1000,
+        alpha: 0.15,
+        scale: 1.2,
+        duration: 800,
         yoyo: true,
         repeat: -1
       });
@@ -272,23 +295,36 @@ export class MineScene extends Phaser.Scene {
     const enemyData = ENEMIES[enemyType];
     if (!enemyData) return null;
     
-    const enemy = this.physics.add.sprite(x, y, enemyType);
-    enemy.setTint(enemyData.color || 0xff0000);
+    // Create enemy as visible shape
+    const enemyColor = enemyData.color || 0xff4444;
+    const enemy = this.add.rectangle(x, y, 28, 28, enemyColor);
+    enemy.setStrokeStyle(2, 0xff0000);
+    enemy.setDepth(80);
+    this.physics.add.existing(enemy);
     
     enemy.id = id;
     enemy.enemyType = enemyType;
-    enemy.health = enemyData.health;
-    enemy.maxHealth = enemyData.health;
-    enemy.damage = enemyData.damage;
-    enemy.speed = enemyData.speed * 0.7; // Slower in mines
+    // Mine enemies have 3x health - they're tougher underground!
+    enemy.health = enemyData.health * 3;
+    enemy.maxHealth = enemyData.health * 3;
+    enemy.damage = enemyData.damage * 1.5; // 50% more damage
+    enemy.speed = enemyData.speed * 0.8; // Slightly slower in mines
     enemy.lastAttackTime = 0;
-    enemy.attackCooldown = 1000;
-    enemy.aggroRange = 150;
+    enemy.attackCooldown = 800; // Attack faster
+    enemy.aggroRange = 250; // Much larger aggro range - they can see in the dark!
     enemy.isAggro = false;
     
+    // Enemy label
+    enemy.label = this.add.text(x, y, enemyType.charAt(0).toUpperCase(), {
+      fontSize: '12px',
+      fontFamily: 'Arial',
+      fontStyle: 'bold',
+      color: '#ffffff'
+    }).setOrigin(0.5).setDepth(81);
+    
     // Health bar
-    enemy.healthBarBg = this.add.rectangle(x, y - 25, 30, 4, 0x333333);
-    enemy.healthBarFill = this.add.rectangle(x, y - 25, 28, 2, 0xff4444);
+    enemy.healthBarBg = this.add.rectangle(x, y - 20, 30, 5, 0x333333).setDepth(82);
+    enemy.healthBarFill = this.add.rectangle(x, y - 20, 28, 3, 0xff4444).setDepth(83);
     
     this.enemies.add(enemy);
     
@@ -306,42 +342,50 @@ export class MineScene extends Phaser.Scene {
   }
 
   createLighting() {
-    // Dark overlay with alpha mask effect
+    // Simple vignette effect - less aggressive darkness
     this.darkness = this.add.graphics();
     this.darkness.setDepth(200);
-    this.updateLighting();
   }
 
   updateLighting() {
     this.darkness.clear();
     
-    // Create dark overlay
-    this.darkness.fillStyle(0x000000, 0.7);
-    this.darkness.fillRect(0, 0, this.mineWidth, this.mineHeight);
-    
-    // Cut out light around player
-    this.darkness.fillStyle(0x000000, 0);
-    
-    // Use blend mode to create light effect
-    const lightRadius = 150;
+    // Create a subtle darkness around edges, light in center around player
     const px = this.player.x;
     const py = this.player.y;
+    const camX = this.cameras.main.scrollX;
+    const camY = this.cameras.main.scrollY;
+    const camW = this.cameras.main.width;
+    const camH = this.cameras.main.height;
     
-    // Create gradient-like effect with multiple circles
-    for (let r = lightRadius; r > 0; r -= 10) {
-      const alpha = 0.7 * (r / lightRadius);
-      this.darkness.fillStyle(0x000000, alpha);
-      this.darkness.fillCircle(px, py, r);
+    // Draw darkness with hole for player light
+    this.darkness.fillStyle(0x000000, 0.6);
+    
+    // Fill the entire visible area
+    this.darkness.fillRect(camX - 100, camY - 100, camW + 200, camH + 200);
+    
+    // Cut out light circles using blend mode
+    this.darkness.setBlendMode(Phaser.BlendModes.ERASE);
+    
+    // Player light - gradient effect
+    for (let i = 0; i < 5; i++) {
+      const radius = 180 - i * 30;
+      const alpha = 0.3 + i * 0.15;
+      this.darkness.fillStyle(0xffffff, alpha);
+      this.darkness.fillCircle(px, py, radius);
     }
     
-    // Light around other players
+    // Remote player lights
     this.remotePlayers.forEach(player => {
-      for (let r = 100; r > 0; r -= 10) {
-        const alpha = 0.7 * (r / 100);
-        this.darkness.fillStyle(0x000000, alpha);
-        this.darkness.fillCircle(player.x, player.y, r);
+      for (let i = 0; i < 4; i++) {
+        const radius = 120 - i * 25;
+        const alpha = 0.25 + i * 0.15;
+        this.darkness.fillStyle(0xffffff, alpha);
+        this.darkness.fillCircle(player.x, player.y, radius);
       }
     });
+    
+    this.darkness.setBlendMode(Phaser.BlendModes.NORMAL);
   }
 
   setupControls() {
@@ -425,8 +469,11 @@ export class MineScene extends Phaser.Scene {
     
     this.player.setVelocity(vx, vy);
     
-    // Update player light position
+    // Update player light and label position
     this.playerLight.setPosition(this.player.x, this.player.y);
+    if (this.playerLabel) {
+      this.playerLabel.setPosition(this.player.x, this.player.y - 25);
+    }
     
     // Mining
     if (this.keys.harvest.isDown) {
@@ -444,12 +491,15 @@ export class MineScene extends Phaser.Scene {
     // Update lighting
     this.updateLighting();
     
-    // Update enemy health bars
+    // Update enemy health bars and labels
     this.enemies.getChildren().forEach(enemy => {
       if (enemy.healthBarBg && enemy.healthBarFill) {
-        enemy.healthBarBg.setPosition(enemy.x, enemy.y - 25);
-        enemy.healthBarFill.setPosition(enemy.x - 14, enemy.y - 25);
+        enemy.healthBarBg.setPosition(enemy.x, enemy.y - 20);
+        enemy.healthBarFill.setPosition(enemy.x, enemy.y - 20);
         enemy.healthBarFill.setScale(enemy.health / enemy.maxHealth, 1);
+      }
+      if (enemy.label) {
+        enemy.label.setPosition(enemy.x, enemy.y);
       }
     });
     
@@ -510,8 +560,9 @@ export class MineScene extends Phaser.Scene {
     const xp = this.registry.get('xp') || 0;
     this.registry.set('xp', xp + rock.tier * 5);
     
-    // Destroy rock
+    // Destroy rock and its components
     if (rock.sparkle) rock.sparkle.destroy();
+    if (rock.label) rock.label.destroy();
     rock.destroy();
     
     // Broadcast in multiplayer
@@ -588,6 +639,7 @@ export class MineScene extends Phaser.Scene {
     // Cleanup
     if (enemy.healthBarBg) enemy.healthBarBg.destroy();
     if (enemy.healthBarFill) enemy.healthBarFill.destroy();
+    if (enemy.label) enemy.label.destroy();
     enemy.destroy();
     
     // Broadcast
@@ -715,10 +767,19 @@ export class MineScene extends Phaser.Scene {
     let remotePlayer = this.remotePlayers.get(peerId);
     
     if (!remotePlayer) {
-      // Create remote player sprite
-      remotePlayer = this.physics.add.sprite(data.x, data.y, 'player');
-      remotePlayer.setTint(0x88aaff);
+      // Create remote player as rectangle
+      remotePlayer = this.add.rectangle(data.x, data.y, 24, 32, 0x88ff88);
+      remotePlayer.setStrokeStyle(2, 0xffffff);
+      remotePlayer.setDepth(99);
       remotePlayer.playerNumber = data.playerNumber;
+      
+      // Label
+      remotePlayer.label = this.add.text(data.x, data.y - 25, `P${data.playerNumber}`, {
+        fontSize: '10px',
+        fontFamily: 'Arial',
+        color: '#88ff88'
+      }).setOrigin(0.5).setDepth(100);
+      
       this.remotePlayers.set(peerId, remotePlayer);
     }
     
@@ -728,7 +789,12 @@ export class MineScene extends Phaser.Scene {
       x: data.x,
       y: data.y,
       duration: 50,
-      ease: 'Linear'
+      ease: 'Linear',
+      onUpdate: () => {
+        if (remotePlayer.label) {
+          remotePlayer.label.setPosition(remotePlayer.x, remotePlayer.y - 25);
+        }
+      }
     });
   }
 
@@ -736,6 +802,7 @@ export class MineScene extends Phaser.Scene {
     const rock = this.rocks.getChildren().find(r => r.id === data.rockId);
     if (rock) {
       if (rock.sparkle) rock.sparkle.destroy();
+      if (rock.label) rock.label.destroy();
       rock.destroy();
     }
   }
@@ -749,6 +816,7 @@ export class MineScene extends Phaser.Scene {
     if (enemy) {
       if (enemy.healthBarBg) enemy.healthBarBg.destroy();
       if (enemy.healthBarFill) enemy.healthBarFill.destroy();
+      if (enemy.label) enemy.label.destroy();
       enemy.destroy();
     }
   }
@@ -756,6 +824,7 @@ export class MineScene extends Phaser.Scene {
   handleRemotePlayerExit(data, peerId) {
     const remotePlayer = this.remotePlayers.get(peerId);
     if (remotePlayer) {
+      if (remotePlayer.label) remotePlayer.label.destroy();
       remotePlayer.destroy();
       this.remotePlayers.delete(peerId);
     }
