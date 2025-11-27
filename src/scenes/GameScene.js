@@ -2018,6 +2018,9 @@ export class GameScene extends Phaser.Scene {
       total: inventory[resourceKey]
     });
     
+    // Emit inventory changed for crafting panel updates
+    this.events.emit('inventoryChanged');
+    
     // Destroy and respawn resource
     const type = resource.resourceType;
     const resourceId = resource.id;
@@ -3354,6 +3357,9 @@ export class GameScene extends Phaser.Scene {
     });
     
     this.registry.set('inventory', inventory);
+    
+    // Emit inventory changed for crafting panel updates
+    this.events.emit('inventoryChanged');
     
     // Add XP
     const xp = this.registry.get('xp');

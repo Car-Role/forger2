@@ -71,6 +71,53 @@ export class UIScene extends Phaser.Scene {
       callbackScope: this,
       loop: true
     });
+    
+    // Listen for inventory changes to update crafting panel
+    this.gameScene.events.on('inventoryChanged', () => this.onInventoryChanged(), this);
+    
+    // Also update crafting panel periodically to catch any changes
+    this.time.addEvent({
+      delay: 500,
+      callback: () => {
+        if (this.craftingPanel && this.craftingPanel.visible) {
+          this.updateCraftingPanel();
+        }
+        if (this.activeModal) {
+          this.updateModalContent();
+        }
+      },
+      callbackScope: this,
+      loop: true
+    });
+  }
+  
+  onInventoryChanged() {
+    // Update crafting panel if visible
+    if (this.craftingPanel && this.craftingPanel.visible) {
+      this.updateCraftingPanel();
+    }
+    // Update active modal if open
+    if (this.activeModal) {
+      this.updateModalContent();
+    }
+    // Update inventory UI
+    if (this.inventoryUI) {
+      this.inventoryUI.refresh();
+    }
+  }
+  
+  updateModalContent() {
+    switch (this.activeModal) {
+      case 'workbench':
+        this.updateWorkbenchContent();
+        break;
+      case 'forge':
+        this.updateForgeContent();
+        break;
+      case 'storage':
+        this.updateStorageContent();
+        break;
+    }
   }
 
   setupKeyboardShortcuts() {
@@ -506,9 +553,17 @@ export class UIScene extends Phaser.Scene {
     
     for (const [resource, amount] of Object.entries(recipe)) {
       inventory[resource] -= amount;
+      if (inventory[resource] <= 0) {
+        delete inventory[resource];
+      }
     }
     
     this.registry.set('inventory', inventory);
+    
+    // Emit inventory changed event to update UI
+    if (this.gameScene) {
+      this.gameScene.events.emit('inventoryChanged');
+    }
   }
 
   craftTool(toolKey) {
